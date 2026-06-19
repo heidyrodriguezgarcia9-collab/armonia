@@ -54,7 +54,7 @@ export function Sidebar() {
 }
 
 export function TabBar() {
-  const { activeView, setActiveView, openTaskForm } = useAppStore()
+  const { activeView, setActiveView, openTaskForm, theme, toggleTheme } = useAppStore()
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 safe-area-bottom">
@@ -73,6 +73,13 @@ export function TabBar() {
             <span className="text-[10px]">{label}</span>
           </button>
         ))}
+        <button
+          onClick={toggleTheme}
+          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-400 dark:text-gray-500 transition-all duration-200"
+        >
+          {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+          <span className="text-[10px]">{theme === 'light' ? 'Oscuro' : 'Claro'}</span>
+        </button>
       </div>
 
       <button
