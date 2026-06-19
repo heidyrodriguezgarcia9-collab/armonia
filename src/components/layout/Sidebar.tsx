@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarDays, ListTodo, Wallet, Settings, Sun, Moon, Plus, LogOut, User as UserIcon } from 'lucide-react'
+import { LayoutDashboard, CalendarDays, ListTodo, Wallet, Settings, Sun, Moon, Plus, LogOut } from 'lucide-react'
 import type { ViewType } from '../../types'
 import { useAppStore } from '../../store/useAppStore'
 import { logOut } from '../../firebase/auth'
@@ -25,17 +25,8 @@ export function Sidebar() {
       </div>
 
       {user && (
-        <div className="px-4 pb-4 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 mx-3">
-          {user.photoURL ? (
-            <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-              <UserIcon className="w-4 h-4 text-primary-500" />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.displayName ?? 'Usuario'}</p>
-          </div>
+        <div className="px-4 pb-4 border-b border-gray-100 dark:border-gray-800 mx-3">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.displayName ?? 'Usuario'}</p>
         </div>
       )}
 
@@ -104,11 +95,7 @@ export function TabBar() {
               : 'text-gray-400 dark:text-gray-500'
           }`}
         >
-          {user?.photoURL ? (
-            <img src={user.photoURL} alt="" className="w-5 h-5 rounded-full" />
-          ) : (
-            <Settings className="w-5 h-5" />
-          )}
+          <Settings className="w-5 h-5" />
           <span className="text-[10px]">{user?.displayName?.split(' ')[0] ?? 'Ajustes'}</span>
         </button>
       </div>
