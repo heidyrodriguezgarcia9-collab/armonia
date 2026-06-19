@@ -1,9 +1,30 @@
 import { create } from 'zustand'
-import type { Task, Category, SubTask, Priority, TaskStatus, ViewType, AppState } from '../types'
+import type { Task, Category, SubTask, Priority, TaskStatus, ViewType } from '../types'
 import { DEFAULT_CATEGORIES } from '../utils/constants'
 import { generateId, dateToKey, getToday } from '../utils/helpers'
+import * as firestore from '../firebase/firestore'
+
+interface AppState {
+  tasks: Task[]
+  categories: Category[]
+  user: { uid: string; displayName: string | null; photoURL: string | null } | null
+  authLoading: boolean
+  theme: 'light' | 'dark'
+  activeMonth: string
+  activeView: ViewType
+  selectedDay: string | null
+  isDayModalOpen: boolean
+  editingTask: Task | null
+  isTaskFormOpen: boolean
+  searchQuery: string
+  filterCategory: string | null
+  filterStatus: TaskStatus | null
+  filterPriority: Priority | null
+}
 
 interface AppActions {
+  setUser: (user: AppState['user']) => void
+  setAuthLoading: (v: boolean) => void
   setTheme: (theme: 'light' | 'dark') => void
   toggleTheme: () => void
   setActiveMonth: (month: string) => void
@@ -14,7 +35,7 @@ interface AppActions {
   openTaskForm: (task?: Task) => void
   closeTaskForm: () => void
 
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void
+  addTask: (data: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void
   updateTask: (id: string, data: Partial<Task>) => void
   deleteTask: (id: string) => void
   toggleTaskStatus: (id: string) => void
@@ -22,7 +43,7 @@ interface AppActions {
   addSubTask: (taskId: string, text: string) => void
   removeSubTask: (taskId: string, subTaskId: string) => void
 
-  addCategory: (category: Omit<Category, 'id'>) => void
+  addCategory: (data: Omit<Category, 'id'>) => void
   updateCategory: (id: string, data: Partial<Category>) => void
   deleteCategory: (id: string) => void
 
@@ -31,6 +52,9 @@ interface AppActions {
   setFilterStatus: (status: TaskStatus | null) => void
   setFilterPriority: (priority: Priority | null) => void
   clearFilters: () => void
+
+  loadUserData: (uid: string) => Promise<void>
+  _saveToFirestore: () => void
 
   getTasksByDate: (date: string) => Task[]
   getTasksByMonth: (month: string) => Task[]
@@ -41,30 +65,16 @@ interface AppActions {
   getMonthlyExpenses: () => { total: number; paid: number; unpaid: number; byCategory: Record<string, number> }
   getOverdueTasks: () => Task[]
   searchTasks: (query: string) => Task[]
-
-  _hydrate: () => void
 }
 
 type AppStore = AppState & AppActions
 
-function loadState(): Partial<AppState> {
-  try {
-    const saved = localStorage.getItem('armonia-store')
-    if (saved) {
-      return JSON.parse(saved)
-    }
-  } catch {}
-  return {}
+function saveTheme(theme: string) {
+  try { localStorage.setItem('armonia-theme', theme) } catch {}
 }
 
-function saveState(state: AppState) {
-  try {
-    localStorage.setItem('armonia-store', JSON.stringify({
-      tasks: state.tasks,
-      categories: state.categories,
-      theme: state.theme,
-    }))
-  } catch {}
+function loadTheme(): string | null {
+  try { return localStorage.getItem('armonia-theme') } catch { return null }
 }
 
 const today = getToday()
@@ -72,7 +82,9 @@ const today = getToday()
 export const useAppStore = create<AppStore>((set, get) => ({
   tasks: [],
   categories: DEFAULT_CATEGORIES,
-  theme: 'light',
+  user: null,
+  authLoading: true,
+  theme: loadTheme() === 'dark' ? 'dark' : 'light',
   activeMonth: dateToKey(today),
   activeView: 'dashboard',
   selectedDay: null,
@@ -84,14 +96,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   filterStatus: null,
   filterPriority: null,
 
-  setTheme: (theme) => {
-    set({ theme })
-    saveState(get())
-  },
+  setUser: (user) => set({ user }),
+  setAuthLoading: (v) => set({ authLoading: v }),
+
+  setTheme: (theme) => { set({ theme }); saveTheme(theme) },
   toggleTheme: () => {
     const next = get().theme === 'light' ? 'dark' : 'light'
     set({ theme: next })
-    saveState(get())
+    saveTheme(next)
   },
   setActiveMonth: (month) => set({ activeMonth: month }),
   setActiveView: (view) => set({ activeView: view }),
@@ -103,14 +115,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   addTask: (taskData) => {
     const now = new Date().toISOString()
-    const task: Task = {
-      ...taskData,
-      id: generateId(),
-      createdAt: now,
-      updatedAt: now,
-    }
+    const task: Task = { ...taskData, id: generateId(), createdAt: now, updatedAt: now }
     set((s) => ({ tasks: [...s.tasks, task] }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   updateTask: (id, data) => {
     set((s) => ({
@@ -118,11 +125,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t
       ),
     }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   deleteTask: (id) => {
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   toggleTaskStatus: (id) => {
     set((s) => ({
@@ -136,7 +143,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         return { ...t, status: nextStatus[t.status], updatedAt: new Date().toISOString() }
       }),
     }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   toggleSubTask: (taskId, subTaskId) => {
     set((s) => ({
@@ -150,7 +157,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       ),
     }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   addSubTask: (taskId, text) => {
     const sub: SubTask = { id: generateId(), text, completed: false }
@@ -159,7 +166,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         t.id === taskId ? { ...t, subtasks: [...t.subtasks, sub], updatedAt: new Date().toISOString() } : t
       ),
     }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   removeSubTask: (taskId, subTaskId) => {
     set((s) => ({
@@ -171,26 +178,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       ),
     }))
-    saveState(get())
+    get()._saveToFirestore()
   },
 
   addCategory: (catData) => {
     const cat: Category = { ...catData, id: generateId() }
     set((s) => ({ categories: [...s.categories, cat] }))
-    saveState(get())
+    get()._saveToFirestore()
   },
   updateCategory: (id, data) => {
-    set((s) => ({
-      categories: s.categories.map((c) => c.id === id ? { ...c, ...data } : c),
-    }))
-    saveState(get())
+    set((s) => ({ categories: s.categories.map((c) => c.id === id ? { ...c, ...data } : c) }))
+    get()._saveToFirestore()
   },
   deleteCategory: (id) => {
     set((s) => ({
       categories: s.categories.filter((c) => c.id !== id),
-      tasks: s.tasks.map((t) => t.categoryId === id ? { ...t, categoryId: 'personal', updatedAt: new Date().toISOString() } : t),
+      tasks: s.tasks.map((t) =>
+        t.categoryId === id ? { ...t, categoryId: 'personal', updatedAt: new Date().toISOString() } : t
+      ),
     }))
-    saveState(get())
+    get()._saveToFirestore()
   },
 
   setSearchQuery: (query) => set({ searchQuery: query }),
@@ -199,21 +206,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setFilterPriority: (priority) => set({ filterPriority: priority }),
   clearFilters: () => set({ searchQuery: '', filterCategory: null, filterStatus: null, filterPriority: null }),
 
-  getTasksByDate: (date) => {
-    return get().tasks.filter((t) => t.date === date)
+  loadUserData: async (uid) => {
+    try {
+      const data = await firestore.loadUserData(uid)
+      set({ tasks: data.tasks, categories: data.categories.length > 0 ? data.categories : DEFAULT_CATEGORIES })
+    } catch (err) {
+      console.error('Error loading user data:', err)
+    }
   },
-  getTasksByMonth: (month) => {
-    return get().tasks.filter((t) => t.date.startsWith(month.substring(0, 7)))
+
+  _saveToFirestore: () => {
+    const { user, tasks, categories } = get()
+    if (user) {
+      firestore.saveAllData(user.uid, tasks, categories).catch(console.error)
+    }
   },
-  getTodayTasks: () => {
-    return get().tasks.filter((t) => t.date === dateToKey(getToday()))
-  },
-  getPendingPayments: () => {
-    return get().tasks.filter((t) => {
-      const cat = get().categories.find((c) => c.id === t.categoryId)
-      return cat?.id === 'finance' && t.paid === false
-    })
-  },
+
+  getTasksByDate: (date) => get().tasks.filter((t) => t.date === date),
+  getTasksByMonth: (month) => get().tasks.filter((t) => t.date.startsWith(month.substring(0, 7))),
+  getTodayTasks: () => get().tasks.filter((t) => t.date === dateToKey(getToday())),
+  getPendingPayments: () => get().tasks.filter((t) => {
+    const cat = get().categories.find((c) => c.id === t.categoryId)
+    return cat?.id === 'finance' && t.paid === false
+  }),
   getUpcomingTasks: (count = 3) => {
     const todayKey = dateToKey(getToday())
     return get().tasks
@@ -256,12 +271,5 @@ export const useAppStore = create<AppStore>((set, get) => ({
         t.description.toLowerCase().includes(q) ||
         t.notes.toLowerCase().includes(q)
     )
-  },
-
-  _hydrate: () => {
-    const saved = loadState()
-    if (saved.tasks) set({ tasks: saved.tasks })
-    if (saved.categories) set({ categories: saved.categories })
-    if (saved.theme) set({ theme: saved.theme })
   },
 }))

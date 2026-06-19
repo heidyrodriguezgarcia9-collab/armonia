@@ -1,6 +1,7 @@
-import { LayoutDashboard, CalendarDays, ListTodo, Wallet, Settings, Sun, Moon, Plus } from 'lucide-react'
+import { LayoutDashboard, CalendarDays, ListTodo, Wallet, Settings, Sun, Moon, Plus, LogOut, User as UserIcon } from 'lucide-react'
 import type { ViewType } from '../../types'
 import { useAppStore } from '../../store/useAppStore'
+import { logOut } from '../../firebase/auth'
 
 const navItems: { view: ViewType; label: string; icon: typeof LayoutDashboard }[] = [
   { view: 'dashboard', label: 'Inicio', icon: LayoutDashboard },
@@ -11,7 +12,7 @@ const navItems: { view: ViewType; label: string; icon: typeof LayoutDashboard }[
 ]
 
 export function Sidebar() {
-  const { activeView, setActiveView, theme, toggleTheme } = useAppStore()
+  const { activeView, setActiveView, theme, toggleTheme, user } = useAppStore()
 
   return (
     <aside className="hidden lg:flex flex-col w-64 h-screen bg-white dark:bg-gray-950 border-r border-gray-100 dark:border-gray-800 fixed left-0 top-0 z-30">
@@ -22,6 +23,21 @@ export function Sidebar() {
         </h1>
         <p className="text-xs text-gray-400 mt-0.5">Mi Agenda Personal</p>
       </div>
+
+      {user && (
+        <div className="px-4 pb-4 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 mx-3">
+          {user.photoURL ? (
+            <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+              <UserIcon className="w-4 h-4 text-primary-500" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.displayName ?? 'Usuario'}</p>
+          </div>
+        </div>
+      )}
 
       <nav className="flex-1 px-3 space-y-1">
         {navItems.map(({ view, label, icon: Icon }) => (
@@ -40,7 +56,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-3 border-t border-gray-100 dark:border-gray-800">
+      <div className="p-3 border-t border-gray-100 dark:border-gray-800 space-y-1">
         <button
           onClick={toggleTheme}
           className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 transition-all duration-200"
@@ -48,18 +64,25 @@ export function Sidebar() {
           {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           {theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
         </button>
+        <button
+          onClick={() => logOut()}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all duration-200"
+        >
+          <LogOut className="w-5 h-5" />
+          Cerrar sesión
+        </button>
       </div>
     </aside>
   )
 }
 
 export function TabBar() {
-  const { activeView, setActiveView, openTaskForm, theme, toggleTheme } = useAppStore()
+  const { activeView, setActiveView, openTaskForm, user } = useAppStore()
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 safe-area-bottom">
       <div className="flex items-center justify-around px-2 py-1">
-        {navItems.map(({ view, label, icon: Icon }) => (
+        {navItems.slice(0, 4).map(({ view, label, icon: Icon }) => (
           <button
             key={view}
             onClick={() => setActiveView(view)}
@@ -74,11 +97,19 @@ export function TabBar() {
           </button>
         ))}
         <button
-          onClick={toggleTheme}
-          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-400 dark:text-gray-500 transition-all duration-200"
+          onClick={() => setActiveView('settings')}
+          className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 ${
+            activeView === 'settings'
+              ? 'text-primary-600 dark:text-primary-400'
+              : 'text-gray-400 dark:text-gray-500'
+          }`}
         >
-          {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
-          <span className="text-[10px]">{theme === 'light' ? 'Oscuro' : 'Claro'}</span>
+          {user?.photoURL ? (
+            <img src={user.photoURL} alt="" className="w-5 h-5 rounded-full" />
+          ) : (
+            <Settings className="w-5 h-5" />
+          )}
+          <span className="text-[10px]">{user?.displayName?.split(' ')[0] ?? 'Ajustes'}</span>
         </button>
       </div>
 
